@@ -236,7 +236,7 @@ namespace thisptr {
     return logger;
   }
 
-#ifdef __cpp_user_defined_literals
+#if defined(__cpp_user_defined_literals) && defined(LOG_LITERALS)
   namespace logger_literals {
     std::stringstream operator ""_ss (const char* msg, size_t) {
       std::stringstream ss;
