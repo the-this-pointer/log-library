@@ -4,6 +4,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <memory>
 
 #ifdef WINNT
 #include <windows.h>
@@ -122,6 +123,13 @@ namespace thisptr {
 
   class Logger {
   public:
+    static std::unique_ptr<Logger>& getInstance(const std::string& name = "", std::ostream& sink = std::cout) {
+      static std::unique_ptr<Logger> ins;
+      if (!ins)
+        ins = std::make_unique<Logger>(name, sink);
+      return ins;
+    }
+
     enum LogLevel {
       SILENT = 0,
       CRIT,
@@ -226,6 +234,29 @@ namespace thisptr {
     }
     return logger;
   }
+
+#ifdef __cpp_user_defined_literals
+  namespace logger_literals {
+    void operator ""_c (const char* msg, size_t) {
+      (*Logger::getInstance())(Logger::CRIT) << msg << std::endl;
+    }
+    void operator ""_e (const char* msg, size_t) {
+      (*Logger::getInstance())(Logger::ERR) << msg << std::endl;
+    }
+    void operator ""_w (const char* msg, size_t) {
+      (*Logger::getInstance())(Logger::WARN) << msg << std::endl;
+    }
+    void operator ""_i (const char* msg, size_t) {
+      (*Logger::getInstance())(Logger::INFO) << msg << std::endl;
+    }
+    void operator ""_d (const char* msg, size_t) {
+      (*Logger::getInstance())(Logger::DEBUG) << msg << std::endl;
+    }
+    void operator ""_t (const char* msg, size_t) {
+      (*Logger::getInstance())(Logger::TRACE) << msg << std::endl;
+    }
+  }
+#endif
 
 }
 
