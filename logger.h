@@ -2,6 +2,7 @@
 #define LOG_LIBRARY_LOGGER_H
 
 #include <iostream>
+#include <sstream>
 #include <fstream>
 #include <string>
 #include <memory>
@@ -237,6 +238,12 @@ namespace thisptr {
 
 #ifdef __cpp_user_defined_literals
   namespace logger_literals {
+    std::stringstream operator ""_ss (const char* msg, size_t) {
+      std::stringstream ss;
+      ss << msg;
+      return ss;
+    }
+
     void operator ""_c (const char* msg, size_t) {
       (*Logger::getInstance())(Logger::CRIT) << msg << std::endl;
     }
