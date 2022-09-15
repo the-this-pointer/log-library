@@ -2,16 +2,130 @@
 #define LOG_LIBRARY_LOGGER_H
 
 #include <iostream>
+#include <fstream>
 #include <string>
 
+#ifdef WINNT
+#include <windows.h>
+#endif
+
 namespace thisptr {
+
+  class FileSink: public std::ofstream {
+  public:
+    explicit FileSink(const std::string& path, std::ios_base::openmode openMode = std::ios::out | std::ios::app) {
+      m_path = path;
+      this->open(path, std::ios::out | std::ios::app );
+    }
+
+    ~FileSink() override {
+      if (this->is_open())
+        this->close();
+    }
+
+  private:
+    std::string m_path;
+  };
+
+  class RotatedFileSink: private std::streambuf , public std::ostream {
+  public:
+    explicit RotatedFileSink(const std::string& path,
+                    unsigned int maxBackups = 10,
+                    unsigned long long maxFileSize = 1024):
+                    std::ostream(this), m_path(path), m_maxFileCount(maxBackups), m_maxFileSize(maxFileSize) {
+      m_path = path;
+      checkRollOver();
+      open();
+    }
+
+    ~RotatedFileSink() override {
+      close();
+    }
+
+    void open() {
+      close();
+      m_file.open(m_path, std::ios::out | std::ios::app);
+    }
+
+    void close() {
+      if (m_file.is_open())
+        m_file.close();
+    }
+
+  protected:
+    bool checkRollOver() {
+#ifdef WINNT
+      WIN32_FIND_DATAA data;
+      HANDLE h = FindFirstFileA(m_path.c_str(), &data);
+      if (h != INVALID_HANDLE_VALUE)
+        m_currentFileSize = data.nFileSizeLow | (__int64)data.nFileSizeHigh << 32;
+      FindClose(h);
+#else
+      FILE * pFile = NULL;
+      pFile = fopen (m_path.c_str(), "rb");
+
+      if (pFile != NULL) {
+        fseek (pFile, 0, SEEK_END);
+        m_currentFileSize = ftell(pFile);
+        fclose (pFile);
+      }
+#endif
+      if (m_currentFileSize > m_maxFileSize) {
+        return true;
+      }
+      return false;
+    }
+
+    void rollOverIfNeeded() {
+      if (m_currentFileSize > m_maxFileSize) {
+        close();
+        renameFiles();
+        m_currentFileSize = 0;
+        m_file.open(m_path, std::ios::out | std::ios::trunc);
+      }
+    }
+
+    void renameFiles() {
+      for (unsigned int i = m_maxFileCount; i > 0; i--) {
+        if (FILE *file = fopen((m_path + "." + std::to_string(i)).c_str(), "r")) {
+          fclose(file);
+
+          rename((m_path + "." + std::to_string(i)).c_str(), (m_path + "." + std::to_string(i+1)).c_str());
+        }
+      }
+
+      if (FILE *file = fopen((m_path + "." + std::to_string(m_maxFileCount+1)).c_str(), "r")) {
+        fclose(file);
+
+        remove((m_path + "." + std::to_string(m_maxFileCount+1)).c_str());
+      }
+      rename(m_path.c_str(), (m_path + "." + std::to_string(1)).c_str());
+    }
+
+  private:
+    int overflow(int c) override
+    {
+      m_file.put(c);
+      m_currentFileSize++;
+      if (c == '\n') {
+        rollOverIfNeeded();
+      }
+      return 0;
+    }
+
+    std::ofstream m_file;
+    std::string m_path;
+    unsigned long long m_currentFileSize;
+    unsigned long long m_maxFileSize;
+    const unsigned int m_maxFileCount;
+  };
 
   class Logger {
   public:
     enum LogLevel {
       SILENT = 0,
       CRIT,
-      ERROR,
+      ERR,
       WARN,
       INFO,
       DEBUG,
@@ -22,6 +136,11 @@ namespace thisptr {
         m_sink(sink) {
       m_name = name;
     }
+
+    Logger(Logger& logger)=delete;
+    Logger(Logger&& logger)=delete;
+    Logger& operator= (Logger& logger)=delete;
+    Logger& operator= (Logger&& logger)=delete;
 
     void setLogLevel (const LogLevel& level) {
       m_level = level;
@@ -66,7 +185,7 @@ namespace thisptr {
       switch (lvl)
       {
         case CRIT:    return "[C]";
-        case ERROR:   return "[E]";
+        case ERR:     return "[E]";
         case WARN:    return "[W]";
         case INFO:    return "[I]";
         case DEBUG:   return "[D]";
